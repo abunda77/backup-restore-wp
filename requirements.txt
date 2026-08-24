@@ -1,0 +1,22 @@
+# Requirements — wp_backup
+
+This project depends ONLY on the Python 3 standard library.
+There are **no third-party Python packages** to install via pip.
+
+## Required
+- Python >= 3.8
+  (uses: argparse, fnmatch, getpass, gzip, os, re, shutil, subprocess, sys,
+  tempfile, time, zipfile — all bundled with Python)
+
+## Optional (OS-level binaries, NOT Python libraries)
+For database backup/restore the script shells out to the MySQL/MariaDB
+client tools. Install them with your system package manager if absent,
+or point the script at the binaries with `--mysqldump` / `--mysql`:
+
+- `mysqldump`  — used for database backup (creates the `.sql.gz`)
+- `mysql`      — used for restore / import (`CREATE DATABASE` + import)
+
+Examples:
+- Debian/Ubuntu:  `sudo apt install mariadb-client`
+- CentOS/RHEL:    `sudo yum install mysql-client`
+- Windows:        install the MySQL client tools and add them to PATH
