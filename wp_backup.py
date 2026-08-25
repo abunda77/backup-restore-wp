@@ -45,6 +45,14 @@ import zipfile
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Make output encoding-safe so unicode glyphs (bar, checkmarks) never crash
+# on ASCII code pages like cp1252 when output is redirected.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 # ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
@@ -65,6 +73,182 @@ def human_size(n):
         if n < 1024 or unit == "TB":
             return "%.1f %s" % (n, unit)
         n /= 1024.0
+
+
+# ---------------------------------------------------------------------------
+# Terminal styling & progress bar
+# ---------------------------------------------------------------------------
+
+_ANSI = {
+    "reset": "\033[0m",
+    "bold": "\033[1m",
+    "dim": "\033[2m",
+    "red": "\033[91m",
+    "green": "\033[92m",
+    "yellow": "\033[93m",
+    "cyan": "\033[96m",
+    "magenta": "\033[95m",
+}
+
+
+def _use_color():
+    if os.environ.get("NO_COLOR"):
+        return False
+    if os.environ.get("FORCE_COLOR"):
+        return True
+    try:
+        if not sys.stdout.isatty():
+            return False
+    except Exception:
+        return False
+    return True
+
+
+USE_COLOR = _use_color()
+
+
+def _style(text, name):
+    if not USE_COLOR:
+        return text
+    return "%s%s%s" % (_ANSI[name], text, _ANSI["reset"])
+
+
+def bold(text):
+    return _style(text, "bold")
+
+
+def dim(text):
+    return _style(text, "dim")
+
+
+def red(text):
+    return _style(text, "red")
+
+
+def green(text):
+    return _style(text, "green")
+
+
+def yellow(text):
+    return _style(text, "yellow")
+
+
+def cyan(text):
+    return _style(text, "cyan")
+
+
+def magenta(text):
+    return _style(text, "magenta")
+
+
+def _fmt_size(n):
+    return human_size(n)
+
+
+class ProgressBar(object):
+    """Lightweight single-line TTY progress indicator.
+
+    Determinate when ``total`` is given (renders a filled bar + percent),
+    otherwise indeterminate (used for dump/import streams of unknown size).
+    Rendering is skipped automatically when stdout is not a TTY.
+    """
+
+    def __init__(self, desc="", total=None, width=24, as_items=False):
+        self.desc = desc
+        self.width = max(int(width), 4)
+        self._total = float(total) if total else None
+        self._start = time.time()
+        self._active = sys.stdout.isatty() and not os.environ.get(
+            "NO_COLOR") and not os.environ.get("DSH_NO_PROGRESS")
+        self._shown = False
+        self._as_items = as_items
+
+    def set_total(self, total):
+        self._total = max(float(total), 1.0)
+
+    def update(self, done, suffix=""):
+        if not self._active:
+            return
+        done = max(float(done), 0.0)
+        parts = [dim(self.desc)] if self.desc else []
+        if self._total:  # determinate bar
+            frac = max(0.0, min(done / self._total, 1.0))
+            pct = frac * 100.0
+            if USE_COLOR:
+                bar = green("\u2588") * int(self.width * frac) + \
+                    dim("\u2591") * (self.width - int(self.width * frac))
+            else:
+                bar = "#" * int(self.width * frac) + \
+                    "-" * (self.width - int(self.width * frac))
+            parts.append(bold("%5.1f%%  %s" % (pct, "%d/%d" %
+                                               (int(done), int(self._total))
+                                               if self._as_items
+                                               else _fmt_size(done))))
+        else:  # indeterminate marker sweeping across the bar
+            cells = ["\u2591"] * self.width
+            if USE_COLOR:
+                cells[int((time.time() - self._start) * 2.0) % self.width] = \
+                    "\033[93m\u2588\033[0m"
+                bar = "".join(cells)
+            else:
+                cells = ["-"] * self.width
+                cells[int((time.time() - self._start) * 2.0) % self.width] = "#"
+                bar = "".join(cells)
+            parts.append(_fmt_size(done) + "  " + cyan(suffix))
+        sys.stdout.write("\r%s %s" % (bar, "  ".join(parts)))
+        sys.stdout.flush()
+        self._shown = True
+
+    def finish(self):
+        if self._active and self._shown:
+            sys.stdout.write("\r" + " " * 80 + "\r")
+            sys.stdout.flush()
+            self._shown = False
+
+
+def section(title):
+    """Draw a colorized section banner."""
+    line = dim("\u2500" * 4)
+    log("")
+    log(" %s %s %s" % (line, bold(cyan(title)), line))
+
+
+def banner():
+    """Draw the program header (WordPress-style 'W' mark)."""
+    w = [
+        "   _       __     __                       __",
+        "  | |     / /__  / /_  ____  ___  _____   / /_____",
+        "  | | /| / / _ \\/ __ \\/ __ \\/ _ \\/ ___/  / __/ __ \\",
+        "  | |/ |/ /  __/ /_/ / /_/ /  __/ /     / /_/ /_/ /",
+        "  |__/|__/\\___/_.___/ .___/\\___/_/      \\__/\\____/ ",
+        "                   /_/                             ",
+    ]
+    if not USE_COLOR:
+        log("\n".join(w))
+        log("Backup & Restore WordPress (file + database)")
+        return
+    for i, ln in enumerate(w):
+        col = ("\033[96m", "\033[92m", "\033[93m", "\033[91m",
+               "\033[95m", "\033[94m")[i]
+        log(col + ln + "\033[0m")
+    log(dim("Backup & Restore WordPress - file + database"))
+    log("")
+
+
+def ok(msg):
+    log(green("  \u2714 ") + msg)
+
+
+def info(msg):
+    log(cyan("  \u25b8 ") + msg)
+
+
+def warn(msg):
+    log(yellow("  ! ") + msg)
+
+
+def done(msg):
+    log(bold(green("  \u2714 ") + msg))
 
 
 def split_host_port(host):
@@ -260,9 +444,40 @@ class BackupStats(object):
         self.skipped = []
 
 
+def _count_zip_files(source_dir, extra_excludes):
+    """Count how many entries backup_files will write, for the progress bar."""
+    count = 0
+    if os.path.isfile(os.path.join(source_dir, WP_CONFIG_NAME)):
+        count += 1
+    for root, dirs, files in os.walk(source_dir, topdown=True):
+        rel_root = os.path.relpath(root, source_dir)
+        prefix = "" if rel_root == "." else rel_root.replace(os.sep, "/")
+        for d in list(dirs):
+            arc = prefix + "/" + d if prefix else d
+            if should_exclude(arc, d, extra_excludes):
+                dirs.remove(d)
+        for fname in files:
+            if fname == WP_CONFIG_NAME and root == source_dir:
+                continue
+            arc = prefix + "/" + fname if prefix else fname
+            if should_exclude(arc, fname, extra_excludes):
+                continue
+            count += 1
+    return max(count, 1)
+
+
 def backup_files(source_dir, zip_path, extra_excludes=()):
     """Zip the CONTENTS of source_dir flat (archive root == source_dir)."""
     stats = BackupStats()
+    # Pre-count eligible files so the progress bar can be determinate.
+    total = _count_zip_files(source_dir, extra_excludes)
+    progress = ProgressBar("Zipping files", total=total, as_items=True)
+    done = [0]
+
+    def _tick():
+        done[0] += 1
+        progress.update(done[0], suffix="%d files" % done[0])
+
     with zipfile.ZipFile(zip_path, "w", allowZip64=True) as zf:
 
         def add_dir_entry(arcname, mode=0o755):
@@ -282,6 +497,7 @@ def backup_files(source_dir, zip_path, extra_excludes=()):
             zf.writestr(info, data)
             stats.files += 1
             stats.raw_bytes += len(data)
+            _tick()
 
         for root, dirs, files in os.walk(source_dir, topdown=True):
             dirs.sort()
@@ -325,7 +541,9 @@ def backup_files(source_dir, zip_path, extra_excludes=()):
                         stats.skipped.append("%s (%s)" % (arc, exc))
                         continue
                 stats.files += 1
+                _tick()
 
+    progress.finish()
     return stats
 
 
@@ -369,6 +587,7 @@ def backup_database(cfg, out_path, mysqldump_bin):
                 "set --mysqldump /path/mysqldump." % mysqldump_bin)
 
         total = 0
+        progress = ProgressBar("Dumping DB", width=22)
         try:
             with gzip.open(out_path, "wb", compresslevel=6) as gz:
                 while True:
@@ -377,6 +596,8 @@ def backup_database(cfg, out_path, mysqldump_bin):
                         break
                     gz.write(chunk)
                     total += len(chunk)
+                    progress.update(total, suffix="mysqldump")
+            progress.finish()
             rc = proc.wait()
         except BaseException:
             proc.kill()
@@ -448,14 +669,16 @@ def zip_wordpress_report(zf):
 def safe_extract(zf, target_dir, prefix=""):
     """Zip-slip-safe flat extraction; returns count of extracted entries."""
     count = 0
-    for info in zf.infolist():
+    entries = [i for i in zf.infolist()
+               if not i.filename.replace("\\", "/").endswith("/")]
+    progress = ProgressBar("Extracting", total=len(entries), as_items=True)
+    for info in entries:
         name = info.filename.replace("\\", "/")
-        if name.endswith("/"):
-            continue
         stripped = strip_prefix(name, prefix)
         if not stripped or stripped.endswith("/"):
             continue
         if stripped.startswith("/") or ".." in stripped.split("/"):
+            progress.finish()
             raise RuntimeError("Entri tidak aman di dalam zip: %s"
                                % info.filename)
 
@@ -479,6 +702,8 @@ def safe_extract(zf, target_dir, prefix=""):
             if attrs and os.name == "posix":
                 os.chmod(dest, attrs & 0o7777)
         count += 1
+        progress.update(count, suffix="%d files" % count)
+    progress.finish()
     return count
 
 
@@ -565,6 +790,7 @@ def import_database(sql_gz_path, db_name, db_user, db_password, db_host,
                 "set --mysql /path/mysql." % mysql_bin)
 
         bytes_in = 0
+        progress = ProgressBar("Importing DB", width=22)
         try:
             with gzip.open(sql_gz_path, "rb") as gz:
                 while True:
@@ -576,6 +802,8 @@ def import_database(sql_gz_path, db_name, db_user, db_password, db_host,
                     except BrokenPipeError:
                         break  # real exit code collected below
                     bytes_in += len(chunk)
+                    progress.update(bytes_in, suffix="mysql")
+            progress.finish()
             try:
                 proc.stdin.close()
             except BrokenPipeError:
@@ -600,19 +828,20 @@ def import_database(sql_gz_path, db_name, db_user, db_password, db_host,
 
 def cmd_backup(args):
     site = os.path.abspath(args.site)
-    ok, missing = is_wordpress_dir(site)
-    if not ok:
-        log("Folder ini BUKAN project WordPress yang valid:")
+    section("BACKUP")
+    is_ok, missing = is_wordpress_dir(site)
+    if not is_ok:
+        log(red("Folder ini BUKAN project WordPress yang valid:"))
         for item in missing:
-            log("  - hilang: %s" % item)
+            log(red("  - hilang: %s" % item))
         die("Backup dibatalkan: %s bukan instalasi WordPress." % site)
-    log("[OK] Terdeteksi project WordPress: %s" % site)
+    ok("Terdeteksi project WordPress: %s" % site)
 
     cfg = parse_wp_config(os.path.join(site, WP_CONFIG_NAME))
     if not cfg.get("name"):
         die("DB_NAME tidak ditemukan di wp-config.php.")
-    log("[OK] Database target: %s @ %s"
-        % (cfg.get("name"), cfg.get("host") or "localhost"))
+    ok("Database target: %s @ %s"
+       % (cfg.get("name"), cfg.get("host") or "localhost"))
 
     stamp = time.strftime("%Y%m%d_%H%M%S")
     prefix = args.name or os.path.basename(site.rstrip("/\\")) or "wordpress"
@@ -630,24 +859,22 @@ def cmd_backup(args):
                 die("Backup dibatalkan oleh pengguna.")
 
     # ---- files ----
-    log("")
-    log("== Backup FILE ==")
+    section("Backup FILE")
     stats = backup_files(site, zip_path, extra_excludes=args.exclude)
     zip_size = os.path.getsize(zip_path)
-    log("[OK] Zip   : %s (%s -> %s, %d entri)"
-        % (zip_path, human_size(stats.raw_bytes), human_size(zip_size),
-           stats.files))
+    ok("Zip   : %s (%s -> %s, %d entri)"
+       % (zip_path, human_size(stats.raw_bytes), human_size(zip_size),
+          stats.files))
     if stats.skipped:
-        log("[--] Dilewati %d item (kecualikan/artefak backup):"
-            % len(stats.skipped))
+        warn("Dilewati %d item (kecualikan/artefak backup):"
+             % len(stats.skipped))
         for item in stats.skipped[:20]:
             log("      - %s" % item)
         if len(stats.skipped) > 20:
             log("      ... dan %d lainnya" % (len(stats.skipped) - 20))
 
     # ---- database ----
-    log("")
-    log("== Backup DATABASE ==")
+    section("Backup DATABASE")
     rc, total, _err = backup_database(cfg, sql_path, args.mysqldump)
     if rc != 0:
         if os.path.exists(sql_path):
@@ -655,13 +882,12 @@ def cmd_backup(args):
         die("mysqldump gagal (exit code %d). Cek kredensial DB pada "
             "wp-config.php." % rc)
     if total == 0:
-        log("[!] PERINGATAN: dump database kosong (0 byte).")
-    log("[OK] SQL   : %s (%s)" % (sql_path, human_size(total)))
+        warn("PERINGATAN: dump database kosong (0 byte).")
+    ok("SQL   : %s (%s)" % (sql_path, human_size(total)))
 
-    log("")
-    log("Selesai.")
-    log("  File  : %s" % zip_path)
-    log("  Database: %s" % sql_path)
+    section("Selesai")
+    info("File  : %s" % zip_path)
+    info("Database: %s" % sql_path)
 
 
 def cmd_restore(args):
@@ -670,25 +896,25 @@ def cmd_restore(args):
         die("File zip tidak ditemukan: %s" % zip_path)
 
     # ---- validate zip ----
-    log("== Validasi ZIP ==")
+    section("Validasi ZIP")
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:
             bad = zf.testzip()
             if bad is not None:
                 die("Zip korup pada entri: %s" % bad)
-            ok, missing, prefix, top = zip_wordpress_report(zf)
+            is_ok, missing, prefix, top = zip_wordpress_report(zf)
     except zipfile.BadZipFile:
         die("File '%s' bukan arsip ZIP yang valid." % zip_path)
-    if not ok:
-        log("Zip ini BUKAN backup WordPress yang valid.")
+    if not is_ok:
+        log(red("Zip ini BUKAN backup WordPress yang valid."))
         for item in missing:
-            log("  - hilang di root zip: %s" % item)
+            log(red("  - hilang di root zip: %s" % item))
         die("Restore dibatalkan.")
-    log("[OK] Zip valid sebagai backup WordPress.")
+    ok("Zip valid sebagai backup WordPress:")
     if prefix:
-        log("[i] Entri zip berada di dalam folder pembungkus '%s' dan akan "
-            "diekstrak flat ke target." % prefix)
-    log("[i] Isi root zip: %s" % ", ".join(top[:12])
+        warn("Entri zip berada di dalam folder pembungkus '%s' dan akan "
+             "diekstrak flat ke target." % prefix)
+    info("Isi root zip: %s" % ", ".join(top[:12])
         + (" ..." if len(top) > 12 else ""))
 
     # ---- target dir ----
@@ -702,26 +928,24 @@ def cmd_restore(args):
     os.makedirs(target, exist_ok=True)
 
     # ---- extract files ----
-    log("")
-    log("== Ekstrak FILE ==")
+    section("Ekstrak FILE")
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:
             count = safe_extract(zf, target, prefix=prefix)
     except RuntimeError as exc:
         die(str(exc))
-    log("[OK] %d entri diekstrak ke: %s" % (count, target))
+    ok("%d entri diekstrak ke: %s" % (count, target))
 
     extracted_config = os.path.join(target, WP_CONFIG_NAME)
     old_cfg = {"name": "", "user": "", "password": "", "host": ""}
     if os.path.isfile(extracted_config):
         old_cfg = parse_wp_config(extracted_config)
-        log("[OK] wp-config.php hasil ekstraksi terbaca.")
+        ok("wp-config.php hasil ekstraksi terbaca.")
 
     # ---- database ----
-    log("")
-    log("== Restore DATABASE ==")
+    section("Restore DATABASE")
     sql_gz = find_sql_gz(zip_path, args.sql_gz)
-    log("[i] Sumber dump: %s" % sql_gz)
+    info("Sumber dump: %s" % sql_gz)
 
     new = {
         "name": args.db_name or old_cfg.get("name", ""),
@@ -751,13 +975,13 @@ def cmd_restore(args):
             "--db-name/--db-user/--db-host atau jalankan tanpa --yes."
             % ", ".join(still_missing))
 
-    log("[i] Target DB : %s @ %s (user: %s)"
+    info("Target DB : %s @ %s (user: %s)"
         % (new["name"], new["host"], new["user"]))
 
     if args.create_db:
         create_database(new["user"], new["password"], new["host"],
                         new["name"], args.mysql)
-        log("[OK] Database siap (created if not exists).")
+        ok("Database siap (created if not exists).")
 
     rc, bytes_in, err = import_database(
         sql_gz, new["name"], new["user"], new["password"], new["host"],
@@ -768,9 +992,9 @@ def cmd_restore(args):
                   "database '%s'." % (new["user"], new["name"]))
         die("Import database gagal (exit code %d). %s" % (rc, detail))
     if bytes_in == 0:
-        log("[!] PERINGATAN: dump kosong (0 byte setelah dekompresi).")
+        warn("PERINGATAN: dump kosong (0 byte setelah dekompresi).")
     else:
-        log("[OK] Import selesai (%s SQL dimasukkan)." % human_size(bytes_in))
+        ok("Import selesai (%s SQL dimasukkan)." % human_size(bytes_in))
 
     # ---- sync wp-config.php ----
     updates = {}
@@ -781,19 +1005,19 @@ def cmd_restore(args):
 
     if updates and os.path.isfile(extracted_config):
         if args.no_config_update:
-            log("[i] wp-config.php TIDAK diubah (--no-config-update).")
-            log("[i] Jangan lupa ubah manual: %s" % ", ".join(sorted(updates)))
+            warn("wp-config.php TIDAK diubah (--no-config-update).")
+            warn("Jangan lupa ubah manual: %s" % ", ".join(sorted(updates)))
         else:
             changed = update_wp_config(extracted_config, updates)
             if changed:
-                log("[OK] wp-config.php diperbarui: %s "
-                    "(cadangan .bak tersimpan)." % ", ".join(changed))
+                ok("wp-config.php diperbarui: %s "
+                   "(cadangan .bak tersimpan)." % ", ".join(changed))
             else:
-                log("[!] Pola define() untuk %s tidak ditemukan; ubah manual."
+                warn("Pola define() untuk %s tidak ditemukan; ubah manual."
                     % ", ".join(sorted(updates)))
 
-    log("")
-    log("Selesai. Situs direstore ke: %s" % target)
+    section("Selesai")
+    ok("Situs direstore ke: %s" % target)
 
 
 # ---------------------------------------------------------------------------
@@ -848,6 +1072,7 @@ def build_parser():
 
 
 def main(argv=None):
+    banner()
     args = build_parser().parse_args(argv)
     if args.command == "backup":
         cmd_backup(args)
