@@ -123,6 +123,71 @@ python wp_backup.py restore --zip mywp_20250101_120000.zip \
     --db-name new_db --db-user new_user --db-pass secret --create-db
 ```
 
+## Mengunduh file backup dengan `scp`
+
+Hasil backup (`*.zip` dan `*.sql.gz`) berada di folder tempat `wp_backup.py`
+disimpan di server. Untuk memindahkannya dari server ke komputer lokal
+(jangan backup langsung ke folder lokal — zip dibuat di sisi server),
+gunakan `scp` (Secure Copy).
+
+Sintaks dasar:
+
+```bash
+scp [opsi] <user>@<host>:<path-file-di-server> <path-tujuan-di-lokal>
+```
+
+Koneksi default memakai port SSH 22. Jika SSH server memakai port lain
+(mis. 2222), tambahkan flag `-P <port>`:
+
+```bash
+scp -P 2222 <user>@<host>:<path-file-di-server> <path-tujuan-di-lokal>
+```
+
+Mengunduh dua file sekaligus (file zip dan dump database):
+
+```bash
+scp -P 2222 user@server:/home/user/wp_backup/mywp_20250101_120000.zip \
+          user@server:/home/user/wp_backup/mywp_20250101_120000.sql.gz \
+          .
+```
+
+### Contoh praktis
+
+1. Unduh satu file zip ke folder lokal `~/Downloads`:
+
+   ```bash
+   scp user@myserver.com:/home/user/wp_backup/mywp_20250101_120000.zip \
+       ~/Downloads/
+   ```
+
+2. Unduh dump database saja ke lokasi tetap:
+
+   ```bash
+   scp user@myserver.com:/home/user/wp_backup/mywp_20250101_120000.sql.gz \
+       D:/backups/mywp-latest.sql.gz
+   ```
+
+3. Migrasi server lama → server baru (unduh ke server baru langsung, tanpa
+   lewat mesin lokal):
+
+   ```bash
+   scp user@src-server:/home/user/wp_backup/mywp_20250101_120000.zip \
+       user@src-server:/home/user/wp_backup/mywp_20250101_120000.sql.gz \
+       /home/newuser/wp_backup/
+   ```
+
+4. Lindungi koneksi dengan keyfile khusus (bila bukan key default `~/.ssh/id_rsa`):
+
+   ```bash
+   scp -i ~/.ssh/mykey.pem -P 2222 \
+       user@myserver.com:/home/user/wp_backup/mywp_20250101_120000.zip \
+       ~/Downloads/
+   ```
+
+> **Tips**: gunakan `-P` (huruf besar) untuk port SSH di `scp`
+> (berbeda dengan `ssh -p` kecil). Tambahkan `-r` hanya untuk folder,
+> bukan untuk file tunggal atau daftar file.
+
 ## Dependencies
 
 Skrip memakai **solo pustaka standard Python**; tidak bisogno `install` pip
