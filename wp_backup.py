@@ -889,6 +889,15 @@ def cmd_backup(args):
     info("File  : %s" % zip_path)
     info("Database: %s" % sql_path)
 
+    if args.server:
+        server = args.server
+    else:
+        server = "%s@%s" % ("USER", "IP")
+    log("Untuk unduh ke mesin lokal:")
+    for p in (zip_path, sql_path):
+        remote = "%s:%s" % (server, p.replace("\\", "/"))
+        log(bold("scp %s ." % remote))
+
 
 def cmd_restore(args):
     zip_path = os.path.abspath(args.zip)
@@ -1047,6 +1056,9 @@ def build_parser():
     pb.add_argument("--output-base",
                     help="Path dasar output tanpa ekstensi (override --out/"
                          "--name)")
+    pb.add_argument("--server",
+                    help="Alamat server untuk contoh perintah scp, mis. "
+                         "alwyzon@193.219.97.148 (default: USER@IP)")
     pb.add_argument("-y", "--yes", action="store_true",
                     help="Timpa file output tanpa konfirmasi")
 

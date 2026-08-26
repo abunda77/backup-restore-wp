@@ -58,6 +58,24 @@ Opsi lain: `--out DIR` (folder output lain), `--output-base PATH`
 (path output eksplisit tanpa ekstensi), `--mysqldump PATH`, `-y`
 (timpa tanpa konfirmasi).
 
+Tambahkan `--server` untuk meminta skrip mencetak contoh perintah `scp`
+(berisi nama file backup yang baru dihasilkan) agar mudah mengunduhnya ke
+mesin lokal:
+
+```bash
+python wp_backup.py backup --site /home/mywordpress/public_html \
+    --server alwyzon@193.219.97.148
+```
+
+Contoh keluaran:
+
+```
+scp alwyzon@193.219.97.148:/home/alwyzon/wp_backup/mywp_20250101_120000.zip .
+scp alwyzon@193.219.97.148:/home/alwyzon/wp_backup/mywp_20250101_120000.sql.gz .
+```
+
+Jika `--server` tidak diberikan, tercetak placeholder `USER@IP`.
+
 ## Restore
 
 ```bash
