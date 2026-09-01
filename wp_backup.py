@@ -1032,6 +1032,229 @@ def cmd_restore(args):
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Interactive wizard
+# ---------------------------------------------------------------------------
+
+
+def _ask(prompt, default=None, secret=False, validator=None):
+    """Ask a single question and return the answer.
+
+    ``default`` is used when the user presses Enter with no input.
+    ``secret`` uses getpass so the value is not echoed.
+    ``validator`` is an optional callable(value) -> (ok: bool, msg: str).
+    """
+    hint = ""
+    if default is not None:
+        hint = dim("  [%s]" % default) if USE_COLOR else "  [%s]" % default
+    label = cyan("  ? ") if USE_COLOR else "  ? "
+    while True:
+        try:
+            if secret:
+                value = getpass.getpass(label + prompt + hint + " : ")
+            else:
+                value = input(label + prompt + hint + " : ").strip()
+        except (EOFError, KeyboardInterrupt):
+            log("")
+            die("Dibatalkan oleh user.")
+        if value == "" and default is not None:
+            value = default
+        if value == "":
+            log(yellow("  Nilai tidak boleh kosong. Coba lagi.") if USE_COLOR
+                else "  Nilai tidak boleh kosong. Coba lagi.")
+            continue
+        if validator:
+            ok_val, msg = validator(value)
+            if not ok_val:
+                log(yellow("  " + msg) if USE_COLOR else "  " + msg)
+                continue
+        return value
+
+
+def _choose(prompt, choices):
+    """Present a numbered menu and return the chosen value."""
+    log("")
+    label = bold(cyan("  " + prompt)) if USE_COLOR else "  " + prompt
+    log(label)
+    for i, (key, desc) in enumerate(choices, 1):
+        num = bold("[%d]" % i) if USE_COLOR else "[%d]" % i
+        log("      %s  %s  %s" % (num, key, dim(desc) if USE_COLOR else desc))
+    while True:
+        try:
+            raw = input(cyan("  Pilih [1-%d] : " % len(choices))
+                        if USE_COLOR
+                        else "  Pilih [1-%d] : " % len(choices)).strip()
+        except (EOFError, KeyboardInterrupt):
+            log("")
+            die("Dibatalkan oleh user.")
+        if raw.isdigit() and 1 <= int(raw) <= len(choices):
+            return choices[int(raw) - 1][0]
+        log(yellow("  Masukkan angka 1–%d." % len(choices))
+            if USE_COLOR
+            else "  Masukkan angka 1–%d." % len(choices))
+
+
+def _confirm(prompt, default_yes=True):
+    hint = "[Y/n]" if default_yes else "[y/N]"
+    label = cyan("  ? ") if USE_COLOR else "  ? "
+    try:
+        raw = input(label + prompt + "  " + dim(hint) + " : "
+                    if USE_COLOR
+                    else label + prompt + "  " + hint + " : ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        log("")
+        die("Dibatalkan oleh user.")
+    if raw == "":
+        return default_yes
+    return raw in ("y", "yes")
+
+
+def _separator():
+    log(dim("  " + "─" * 56) if USE_COLOR else "  " + "-" * 56)
+
+
+def interactive_wizard():
+    """Step-by-step wizard yang dijalankan ketika tidak ada argumen CLI."""
+    section("INTERACTIVE WIZARD")
+    log(cyan("  Tidak ada argumen yang diberikan.") if USE_COLOR
+        else "  Tidak ada argumen yang diberikan.")
+    log(dim("  Ikuti langkah-langkah berikut untuk melanjutkan.") if USE_COLOR
+        else "  Ikuti langkah-langkah berikut untuk melanjutkan.")
+
+    mode = _choose(
+        "Pilih operasi:",
+        [
+            ("backup",  "— Backup file WordPress + database"),
+            ("restore", "— Restore dari hasil backup"),
+        ],
+    )
+
+    _separator()
+
+    # ── BACKUP wizard ───────────────────────────────────────────────────────
+    if mode == "backup":
+        section("BACKUP — konfigurasi")
+
+        site = _ask(
+            "Path folder WordPress (mis. /home/saya/public_html)",
+            validator=lambda v: (
+                (True, "")
+                if os.path.isdir(v)
+                else (False, "Folder tidak ditemukan: %s" % v)
+            ),
+        )
+
+        name_default = os.path.basename(site.rstrip("/\\")) or "wordpress"
+        name = _ask("Prefiks nama file output", default=name_default)
+
+        out = _ask(
+            "Folder output (tempat menyimpan .zip dan .sql.gz)",
+            default=SCRIPT_DIR,
+        )
+
+        server = _ask(
+            "Alamat server SCP (mis. user@192.168.1.1) — kosongkan bila tidak perlu",
+            default="",
+        )
+        if server == "":
+            server = None
+
+        _separator()
+        log("")
+        log(bold("  Ringkasan backup:") if USE_COLOR else "  Ringkasan backup:")
+        log("    Site   : %s" % site)
+        log("    Nama   : %s" % name)
+        log("    Output : %s" % out)
+        if server:
+            log("    Server : %s" % server)
+
+        log("")
+        if not _confirm("Lanjutkan backup?"):
+            die("Dibatalkan oleh user.", code=0)
+
+        # Build a fake args namespace identical to what argparse would produce.
+        import types
+        args = types.SimpleNamespace(
+            command="backup",
+            site=site,
+            name=name,
+            out=out,
+            server=server,
+            exclude=[],
+            mysqldump="mysqldump",
+            output_base=None,
+            yes=True,
+        )
+        cmd_backup(args)
+
+    # ── RESTORE wizard ──────────────────────────────────────────────────────
+    else:
+        section("RESTORE — konfigurasi")
+
+        zip_path = _ask(
+            "Path file .zip hasil backup",
+            validator=lambda v: (
+                (True, "")
+                if os.path.isfile(v)
+                else (False, "File tidak ditemukan: %s" % v)
+            ),
+        )
+
+        target = _ask(
+            "Folder tujuan ekstraksi (mis. /home/saya/public_html)",
+        )
+
+        log("")
+        log(bold("  Konfigurasi database baru:") if USE_COLOR
+            else "  Konfigurasi database baru:")
+
+        db_name = _ask("Nama database")
+        db_user = _ask("Username database")
+        db_pass = _ask("Password database", secret=True, default="")
+        if db_pass == "":
+            db_pass = None
+        db_host = _ask("Host database", default="127.0.0.1")
+
+        create_db = _confirm("Buat database (CREATE DATABASE IF NOT EXISTS)?",
+                             default_yes=False)
+        update_cfg = _confirm(
+            "Perbarui DB_* di wp-config.php setelah restore?",
+            default_yes=True,
+        )
+
+        _separator()
+        log("")
+        log(bold("  Ringkasan restore:") if USE_COLOR else "  Ringkasan restore:")
+        log("    File ZIP : %s" % zip_path)
+        log("    Target   : %s" % target)
+        log("    DB name  : %s" % db_name)
+        log("    DB user  : %s" % db_user)
+        log("    DB host  : %s" % db_host)
+        log("    Create   : %s" % ("ya" if create_db else "tidak"))
+        log("    Update cfg: %s" % ("ya" if update_cfg else "tidak"))
+
+        log("")
+        if not _confirm("Lanjutkan restore?"):
+            die("Dibatalkan oleh user.", code=0)
+
+        import types
+        args = types.SimpleNamespace(
+            command="restore",
+            zip=zip_path,
+            target=target,
+            sql_gz=None,
+            db_name=db_name,
+            db_user=db_user,
+            db_pass=db_pass,
+            db_host=db_host,
+            create_db=create_db,
+            no_config_update=not update_cfg,
+            mysql="mysql",
+            yes=True,
+        )
+        cmd_restore(args)
+
+
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -1042,7 +1265,7 @@ def build_parser():
         description="Backup & restore file WordPress (zip flat) + database "
                     "(mysqldump -> .sql.gz).",
     )
-    sub = p.add_subparsers(dest="command", required=True)
+    sub = p.add_subparsers(dest="command")
 
     pb = sub.add_parser("backup", help="Backup file + database WordPress.")
     pb.add_argument("--site", required=True,
@@ -1088,7 +1311,9 @@ def build_parser():
 def main(argv=None):
     banner()
     args = build_parser().parse_args(argv)
-    if args.command == "backup":
+    if args.command is None:
+        interactive_wizard()
+    elif args.command == "backup":
         cmd_backup(args)
     else:
         cmd_restore(args)

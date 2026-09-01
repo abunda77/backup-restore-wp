@@ -12,6 +12,11 @@ Semua perubahan penting pada proyek dicatat di berkas ini.
   ukuran raw vs compressed, SQL menampilkan ukuran raw mysqldump vs ukuran
   file `.sql.gz` setelah kompresi; ringkasan "Selesai" juga menampilkan
   ukuran akhir kedua file.
+- **Interactive wizard**: menjalankan `python wp_backup.py` tanpa argumen
+  kini memunculkan wizard step-by-step pilihan `backup` / `restore`.
+  Setiap parameter wajib ditanyakan satu per satu dengan validasi langsung
+  (cek keberadaan folder/file), nilai default, input password tersembunyi,
+  serta ringkasan + konfirmasi sebelum operasi dijalankan.
 
 ## [1.1.0] - 2026-08-26
 
