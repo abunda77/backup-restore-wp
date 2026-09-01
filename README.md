@@ -76,6 +76,26 @@ scp alwyzon@193.219.97.148:/home/alwyzon/wp_backup/mywp_20250101_120000.sql.gz .
 
 Jika `--server` tidak diberikan, tercetak placeholder `USER@IP`.
 
+## Backup database manual (jika `mysqldump` gagal)
+
+Apabila proses dump otomatis di atas gagal, backup database tetap dapat
+dilakukan secara manual lewat baris perintah `mysqldump`:
+
+```bash
+mysqldump -u USERNAME -p DATABASE_NAME | gzip > DATABASE_NAME_$(date +%Y%m%d_%H%M%S).sql.gz
+```
+
+Gantikan `USERNAME` dan `DATABASE_NAME` dengan kredensial database Anda
+(klien akan meminta password setelah perintah dijalankan). Hasilnya berupa
+file `.sql.gz` dengan nama ber-stempel waktu sesuai contoh di atas. File
+`zip` dan `sql.gz` manual ini lalu dapat di-import lewat perintah restore:
+
+```bash
+python wp_backup.py restore --zip mywordpress_20250101_120000.zip \
+    --sql-gz DATABASE_NAME_20250101_120000.sql.gz \
+    --target /home/mywordpress/public_html
+```
+
 ## Restore
 
 ```bash

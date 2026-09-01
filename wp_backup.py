@@ -883,11 +883,13 @@ def cmd_backup(args):
             "wp-config.php." % rc)
     if total == 0:
         warn("PERINGATAN: dump database kosong (0 byte).")
-    ok("SQL   : %s (%s)" % (sql_path, human_size(total)))
+    sql_size = os.path.getsize(sql_path)
+    ok("SQL   : %s (%s raw -> %s compressed)"
+       % (sql_path, human_size(total), human_size(sql_size)))
 
     section("Selesai")
-    info("File  : %s" % zip_path)
-    info("Database: %s" % sql_path)
+    info("File     : %s  (%s)" % (zip_path, human_size(zip_size)))
+    info("Database : %s  (%s)" % (sql_path, human_size(sql_size)))
 
     if args.server:
         server = args.server

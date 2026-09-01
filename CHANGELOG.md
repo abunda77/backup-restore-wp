@@ -8,6 +8,10 @@ Semua perubahan penting pada proyek dicatat di berkas ini.
 - Opsi `--server` pada perintah `backup` untuk menampilkan contoh perintah
   `scp` (nama file & path mengikuti hasil backup sebenarnya) sebagai petunjuk
   mengunduh hasil backup dari server.
+- Informasi ukuran file hasil backup ditampilkan di log: zip menampilkan
+  ukuran raw vs compressed, SQL menampilkan ukuran raw mysqldump vs ukuran
+  file `.sql.gz` setelah kompresi; ringkasan "Selesai" juga menampilkan
+  ukuran akhir kedua file.
 
 ## [1.1.0] - 2026-08-26
 
