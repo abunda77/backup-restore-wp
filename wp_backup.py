@@ -893,12 +893,28 @@ def cmd_backup(args):
 
     # Show wp-config.php DB credentials summary
     log("")
-    log(bold("  Kredensial database (dari wp-config.php):") if USE_COLOR
-        else "  Kredensial database (dari wp-config.php):")
-    log("    DB_HOST     : %s" % (cfg.get("host") or "localhost"))
-    log("    DB_USER     : %s" % (cfg.get("user") or "-"))
-    log("    DB_PASSWORD : %s" % (cfg.get("password") or "(kosong)"))
-    log("    DB_NAME     : %s" % (cfg.get("name") or "-"))
+    if USE_COLOR:
+        log("  %s %s %s" % (
+            dim("─" * 2),
+            bold(magenta("Kredensial database") + dim(" (wp-config.php)")),
+            dim("─" * 2),
+        ))
+        def _kv(key, value, val_color_fn):
+            return "    %s %s %s" % (
+                dim(key),
+                dim(":"),
+                bold(val_color_fn(value)),
+            )
+        log(_kv("DB_HOST    ", cfg.get("host") or "localhost", cyan))
+        log(_kv("DB_USER    ", cfg.get("user") or "-",         green))
+        log(_kv("DB_PASSWORD", cfg.get("password") or "(kosong)", yellow))
+        log(_kv("DB_NAME    ", cfg.get("name") or "-",         magenta))
+    else:
+        log("  -- Kredensial database (wp-config.php) --")
+        log("    DB_HOST     : %s" % (cfg.get("host") or "localhost"))
+        log("    DB_USER     : %s" % (cfg.get("user") or "-"))
+        log("    DB_PASSWORD : %s" % (cfg.get("password") or "(kosong)"))
+        log("    DB_NAME     : %s" % (cfg.get("name") or "-"))
 
     if args.server:
         server = args.server
@@ -916,10 +932,19 @@ def cmd_backup(args):
 
     if server:
         log("")
-        log("Untuk unduh ke mesin lokal:")
-        for p in (zip_path, sql_path):
-            remote = "%s:%s" % (server, p.replace("\\", "/"))
-            log(bold("  scp %s ." % remote))
+        if USE_COLOR:
+            log("  %s %s %s" % (dim("─" * 2), bold(cyan("Download via SCP")), dim("─" * 2)))
+            for p in (zip_path, sql_path):
+                remote = "%s:%s" % (server, p.replace("\\", "/"))
+                log("    %s %s" % (
+                    bold(yellow("scp")),
+                    bold(green(remote)) + dim("  ."),
+                ))
+        else:
+            log("Untuk unduh ke mesin lokal:")
+            for p in (zip_path, sql_path):
+                remote = "%s:%s" % (server, p.replace("\\", "/"))
+                log("  scp %s ." % remote)
 
 
 def cmd_restore(args):
