@@ -891,14 +891,35 @@ def cmd_backup(args):
     info("File     : %s  (%s)" % (zip_path, human_size(zip_size)))
     info("Database : %s  (%s)" % (sql_path, human_size(sql_size)))
 
+    # Show wp-config.php DB credentials summary
+    log("")
+    log(bold("  Kredensial database (dari wp-config.php):") if USE_COLOR
+        else "  Kredensial database (dari wp-config.php):")
+    log("    DB_HOST     : %s" % (cfg.get("host") or "localhost"))
+    log("    DB_USER     : %s" % (cfg.get("user") or "-"))
+    log("    DB_PASSWORD : %s" % (cfg.get("password") or "(kosong)"))
+    log("    DB_NAME     : %s" % (cfg.get("name") or "-"))
+
     if args.server:
         server = args.server
+    elif not args.yes:
+        log("")
+        try:
+            label = cyan("  ? ") if USE_COLOR else "  ? "
+            hint = dim("  [Enter untuk lewati]") if USE_COLOR else "  [Enter untuk lewati]"
+            server = input(label + "Alamat server SCP user@IP" + hint + " : ").strip() or None
+        except (EOFError, KeyboardInterrupt):
+            log("")
+            server = None
     else:
-        server = "%s@%s" % ("USER", "IP")
-    log("Untuk unduh ke mesin lokal:")
-    for p in (zip_path, sql_path):
-        remote = "%s:%s" % (server, p.replace("\\", "/"))
-        log(bold("scp %s ." % remote))
+        server = None
+
+    if server:
+        log("")
+        log("Untuk unduh ke mesin lokal:")
+        for p in (zip_path, sql_path):
+            remote = "%s:%s" % (server, p.replace("\\", "/"))
+            log(bold("  scp %s ." % remote))
 
 
 def cmd_restore(args):
@@ -1152,12 +1173,19 @@ def interactive_wizard():
             default=SCRIPT_DIR,
         )
 
-        server = _ask(
-            "Alamat server SCP (mis. user@192.168.1.1) — kosongkan bila tidak perlu",
-            default="",
-        )
-        if server == "":
-            server = None
+        log("")
+        log(dim("  Masukkan alamat server untuk perintah SCP (contoh: ubuntu@203.0.113.5).")
+            if USE_COLOR
+            else "  Masukkan alamat server untuk perintah SCP (contoh: ubuntu@203.0.113.5).")
+        log(dim("  Tekan Enter untuk dilewati.")
+            if USE_COLOR
+            else "  Tekan Enter untuk dilewati.")
+        label = cyan("  ? ") if USE_COLOR else "  ? "
+        try:
+            server = input(label + "Server SCP user@IP : ").strip() or None
+        except (EOFError, KeyboardInterrupt):
+            log("")
+            die("Dibatalkan oleh user.")
 
         _separator()
         log("")
