@@ -916,6 +916,34 @@ def cmd_backup(args):
         log("    DB_PASSWORD : %s" % (cfg.get("password") or "(kosong)"))
         log("    DB_NAME     : %s" % (cfg.get("name") or "-"))
 
+    # CLI template: manual mysqldump & mysql
+    db_host = cfg.get("host") or "localhost"
+    db_user = cfg.get("user") or "USER"
+    db_name = cfg.get("name") or "DBNAME"
+    dump_cmd = (
+        "mysqldump --single-transaction --quick --routines --triggers "
+        "--events --no-tablespaces --default-character-set=utf8mb4 "
+        "--host=%s --user=%s %s | gzip > %s"
+        % (db_host, db_user, db_name, os.path.basename(sql_path))
+    )
+    restore_cmd = (
+        "gunzip -c %s | mysql --host=%s --user=%s --default-character-set=utf8mb4 %s"
+        % (os.path.basename(sql_path), db_host, db_user, db_name)
+    )
+    log("")
+    if USE_COLOR:
+        log("  %s %s %s" % (
+            dim("─" * 2),
+            bold(yellow("CLI Template") + dim(" (manual)")),
+            dim("─" * 2),
+        ))
+        log("    %s  %s" % (dim("backup :"), bold(cyan(dump_cmd))))
+        log("    %s  %s" % (dim("restore:"), bold(green(restore_cmd))))
+    else:
+        log("  -- CLI Template (manual) --")
+        log("    backup : " + dump_cmd)
+        log("    restore: " + restore_cmd)
+
     if args.server:
         server = args.server
     elif not args.yes:
